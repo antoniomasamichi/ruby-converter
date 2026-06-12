@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Wordルビ → HTML変換</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 500px;
+        margin: 60px auto;
+      }
+      button {
+        padding: 8px 24px;
+        font-size: 1em;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 16px;
+        color: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Wordルビ → HTML変換</h2>
+    <p>サーバー不要・ブラウザ完結で変換します。</p>
+
+    <input type="file" id="fileInput" accept=".docx" />
+    <br /><br />
+    <button id="btnConv" disabled>変換する</button>
+    <div id="status">docxファイルを選択してください</div>
+
+    <script src="ruby_converter.js"></script>
+    <script>
+      Module.onRuntimeInitialized = () => {
+        // 仮想FSに /tmp を作成
+        try {
+          Module.FS.mkdir("/tmp");
+        } catch (e) {}
+
+        // 以降は前回と同じ
+        const convertFn = Module.cwrap("docx_to_html_wasm", "number", [
+          "array",
+          "number",
+        ]);
+        // ...
+      };
+      Module.onRuntimeInitialized = () => {
+        const convertFn = Module.cwrap("docx_to_html_wasm", "number", [
+          "array",
+          "number",
+        ]);
+
+        const input = document.getElementById("fileInput");
+        const btn = document.getElementById("btnConv");
+        const status = document.getElementById("status");
+
+        input.addEventListener("change", () => {
+          btn.disabled = !input.files.length;
+        });
+
+        btn.addEventListener("click", async () => {
+          const file = input.files[0];
+          const buf = await file.arrayBuffer();
+          const data = new Uint8Array(buf);
+
+          status.textContent = "変換中...";
+
+          // C関数を呼ぶ
+          const ptr = convertFn(data, data.length);
+          if (!ptr) {
+            status.textContent = "エラー: 変換に失敗しました";
+            return;
+          }
+
+          // メモリからHTML文字列を取得
+          const html = Module.UTF8ToString(ptr);
+          Module._free(ptr);
+
+          // ダウンロード
+          const blob = new Blob([html], { type: "text/html" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = file.name.replace(".docx", ".html");
+          a.click();
+          URL.revokeObjectURL(url);
+
+          status.textContent = "完了！ダウンロードが始まります。";
+        });
+      };
+    </script>
+  </body>
+</html>
