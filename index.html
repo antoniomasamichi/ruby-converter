@@ -1,96 +1,124 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Wordルビ → HTML変換</title>
-    <style>
-      body {
-        font-family: sans-serif;
-        max-width: 500px;
-        margin: 60px auto;
-      }
-      button {
-        padding: 8px 24px;
-        font-size: 1em;
-        cursor: pointer;
-      }
-      #status {
-        margin-top: 16px;
-        color: #444;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>Wordルビ → HTML変換</h2>
-    <p>サーバー不要・ブラウザ完結で変換します。</p>
+<head>
+<meta charset="UTF-8">
+<title>DOCX → HTML</title>
+<style>
+body {
+    font-family: sans-serif;
+    padding: 20px;
+}
 
-    <input type="file" id="fileInput" accept=".docx" />
-    <br /><br />
-    <button id="btnConv" disabled>変換する</button>
-    <div id="status">読み込み中...</div>
+textarea {
+    width: 100%;
+    height: 500px;
+    margin-top: 20px;
+    font-family: monospace;
+}
+</style>
+</head>
+<body>
 
-    <script>
-      // Moduleを先に定義してからruby_converter.jsを読む
-      var Module = {
-        onRuntimeInitialized: function () {
-          try {
-            FS.mkdir("/tmp");
-          } catch (e) {}
+<h1>DOCX → HTML変換</h1>
 
-          document.getElementById("status").textContent =
-            "docxファイルを選択してください";
+<input type="file" id="fileInput" accept=".docx">
+<button id="copyBtn">コピー</button>
 
-          const input = document.getElementById("fileInput");
-          const btn = document.getElementById("btnConv");
-          const status = document.getElementById("status");
+<textarea id="output"></textarea>
 
-          input.addEventListener("change", () => {
-            btn.disabled = !input.files.length;
-          });
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const fileInput = document.getElementById("fileInput");
+const output = document.getElementById("output");
+const copyBtn = document.getElementById("copyBtn");
 
-          btn.addEventListener("click", async () => {
-            const file = input.files[0];
-            const buf = await file.arrayBuffer();
-            const data = new Uint8Array(buf);
+fileInput.addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-            status.textContent = "変換中...";
+    const html = await convertDocx(file);
+    output.value = html;
+});
 
-            // Wasmメモリに直接コピー
-            const ptr_in = _malloc(data.length);
-            if (!ptr_in) {
-              status.textContent = "エラー: メモリ確保失敗";
-              return;
-            }
-            HEAPU8.set(data, ptr_in);
+copyBtn.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(output.value);
+    alert("コピーしました");
+});
 
-            // C関数呼び出し
-            const ptr_out = _docx_to_html_wasm(ptr_in, data.length);
-            _free(ptr_in);
+async function convertDocx(file) {
+    const buffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buffer);
+    const xml = await zip.file("word/document.xml").async("string");
 
-            if (!ptr_out) {
-              status.textContent = "エラー: 変換失敗";
-              return;
-            }
+    return convertXml(xml);
+}
 
-            const html = UTF8ToString(ptr_out);
-            _free(ptr_out);
+function convertXml(xmlText) {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(xmlText, "application/xml");
 
-            // ダウンロード
-            const blob = new Blob([html], { type: "text/html" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = file.name.replace(".docx", ".html");
-            a.click();
-            URL.revokeObjectURL(url);
+    const paragraphs = xml.getElementsByTagName("w:p");
 
-            status.textContent = "完了！ダウンロードが始まります。";
-          });
-        },
-      };
-    </script>
+    let html = "";
 
-    <!-- Moduleを定義した後に読み込む -->
-    <script src="ruby_converter.js"></script>
-  </body>
+    for (const p of paragraphs) {
+        const content = convertParagraph(p).trim();
+        if (content) {
+            html += `<p>${content}</p>\n`;
+        }
+    }
+
+    return html;
+}
+
+function convertParagraph(p) {
+    let html = "";
+
+    for (const node of p.children) {
+        if (node.tagName === "w:r") {
+            html += extractRunText(node);
+        }
+        else if (node.tagName === "w:ruby") {
+            html += convertRuby(node);
+        }
+    }
+
+    return html;
+}
+
+function convertRuby(rubyNode) {
+    const rt = rubyNode.getElementsByTagName("w:rt")[0];
+    const rb = rubyNode.getElementsByTagName("w:rubyBase")[0];
+
+    const rubyText = rt
+        ? [...rt.getElementsByTagName("w:t")]
+            .map(t => t.textContent)
+            .join("")
+        : "";
+
+    const baseText = rb
+        ? [...rb.getElementsByTagName("w:t")]
+            .map(t => t.textContent)
+            .join("")
+        : "";
+
+    return `<ruby>${escapeHtml(baseText)}<rt>${escapeHtml(rubyText)}</rt></ruby>`;
+}
+
+function extractRunText(run) {
+    return [...run.getElementsByTagName("w:t")]
+        .map(t => escapeHtml(t.textContent))
+        .join("");
+}
+
+function escapeHtml(str) {
+    return str
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+}
+</script>
+
+</body>
 </html>
