@@ -32,23 +32,9 @@
     <script src="ruby_converter.js"></script>
     <script>
       Module.onRuntimeInitialized = () => {
-        // 仮想FSに /tmp を作成
         try {
           Module.FS.mkdir("/tmp");
         } catch (e) {}
-
-        // 以降は前回と同じ
-        const convertFn = Module.cwrap("docx_to_html_wasm", "number", [
-          "array",
-          "number",
-        ]);
-        // ...
-      };
-      Module.onRuntimeInitialized = () => {
-        const convertFn = Module.cwrap("docx_to_html_wasm", "number", [
-          "array",
-          "number",
-        ]);
 
         const input = document.getElementById("fileInput");
         const btn = document.getElementById("btnConv");
@@ -65,16 +51,27 @@
 
           status.textContent = "変換中...";
 
-          // C関数を呼ぶ
-          const ptr = convertFn(data, data.length);
-          if (!ptr) {
-            status.textContent = "エラー: 変換に失敗しました";
+          // ★ malloc でWasmメモリに直接コピー（RangeError対策）
+          const ptr_in = Module._malloc(data.length);
+          if (!ptr_in) {
+            status.textContent = "エラー: メモリ確保失敗";
+            return;
+          }
+          Module.HEAPU8.set(data, ptr_in);
+
+          // C関数を直接呼ぶ
+          const ptr_out = Module._docx_to_html_wasm(ptr_in, data.length);
+          Module._free(ptr_in);
+
+          if (!ptr_out) {
+            status.textContent =
+              "エラー: 変換失敗（ルビが見つからないか、形式が違う可能性があります）";
             return;
           }
 
           // メモリからHTML文字列を取得
-          const html = Module.UTF8ToString(ptr);
-          Module._free(ptr);
+          const html = Module.UTF8ToString(ptr_out);
+          Module._free(ptr_out);
 
           // ダウンロード
           const blob = new Blob([html], { type: "text/html" });
