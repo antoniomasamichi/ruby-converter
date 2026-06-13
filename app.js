@@ -34,18 +34,17 @@ function convertXmlToHtml(xmlText) {
   const xml = parser.parseFromString(xmlText, "application/xml");
 
   const paragraphs = xml.getElementsByTagName("w:p");
-
-  let html = "";
+  let lines = [];
 
   for (const p of paragraphs) {
-    const pHtml = convertParagraph(p).trim();
+    const text = convertParagraph(p).trim();
 
-    if (pHtml) {
-      html += `<p>${pHtml}</p>\n`;
+    if (text) {
+      lines.push(text);
     }
   }
 
-  return html;
+  return lines.join("\n");
 }
 
 function convertParagraph(p) {
