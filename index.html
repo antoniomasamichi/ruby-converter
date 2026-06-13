@@ -1,124 +1,28 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-<meta charset="UTF-8">
-<title>DOCX → HTML</title>
-<style>
-body {
-    font-family: sans-serif;
-    padding: 20px;
-}
+  <head>
+    <meta charset="UTF-8" />
+    <title>DOCX Ruby Converter</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 20px;
+      }
+      textarea {
+        width: 100%;
+        height: 400px;
+        margin-top: 20px;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <input type="file" id="fileInput" accept=".docx" />
+    <button id="copyBtn">コピー</button>
 
-textarea {
-    width: 100%;
-    height: 500px;
-    margin-top: 20px;
-    font-family: monospace;
-}
-</style>
-</head>
-<body>
+    <textarea id="output"></textarea>
 
-<h1>DOCX → HTML変換</h1>
-
-<input type="file" id="fileInput" accept=".docx">
-<button id="copyBtn">コピー</button>
-
-<textarea id="output"></textarea>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>
-const fileInput = document.getElementById("fileInput");
-const output = document.getElementById("output");
-const copyBtn = document.getElementById("copyBtn");
-
-fileInput.addEventListener("change", async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const html = await convertDocx(file);
-    output.value = html;
-});
-
-copyBtn.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(output.value);
-    alert("コピーしました");
-});
-
-async function convertDocx(file) {
-    const buffer = await file.arrayBuffer();
-    const zip = await JSZip.loadAsync(buffer);
-    const xml = await zip.file("word/document.xml").async("string");
-
-    return convertXml(xml);
-}
-
-function convertXml(xmlText) {
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(xmlText, "application/xml");
-
-    const paragraphs = xml.getElementsByTagName("w:p");
-
-    let html = "";
-
-    for (const p of paragraphs) {
-        const content = convertParagraph(p).trim();
-        if (content) {
-            html += `<p>${content}</p>\n`;
-        }
-    }
-
-    return html;
-}
-
-function convertParagraph(p) {
-    let html = "";
-
-    for (const node of p.children) {
-        if (node.tagName === "w:r") {
-            html += extractRunText(node);
-        }
-        else if (node.tagName === "w:ruby") {
-            html += convertRuby(node);
-        }
-    }
-
-    return html;
-}
-
-function convertRuby(rubyNode) {
-    const rt = rubyNode.getElementsByTagName("w:rt")[0];
-    const rb = rubyNode.getElementsByTagName("w:rubyBase")[0];
-
-    const rubyText = rt
-        ? [...rt.getElementsByTagName("w:t")]
-            .map(t => t.textContent)
-            .join("")
-        : "";
-
-    const baseText = rb
-        ? [...rb.getElementsByTagName("w:t")]
-            .map(t => t.textContent)
-            .join("")
-        : "";
-
-    return `<ruby>${escapeHtml(baseText)}<rt>${escapeHtml(rubyText)}</rt></ruby>`;
-}
-
-function extractRunText(run) {
-    return [...run.getElementsByTagName("w:t")]
-        .map(t => escapeHtml(t.textContent))
-        .join("");
-}
-
-function escapeHtml(str) {
-    return str
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;");
-}
-</script>
-
-</body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>
